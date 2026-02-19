@@ -9,6 +9,8 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
+    
     environment:
       DB_HOST: db
       DB_PORT: "3306"
@@ -98,6 +100,7 @@ services:
       MARIADB_ROOT_PASSWORD: admin
     volumes:
       - db-data:/var/lib/mysql
+    restart: unless-stopped
 
   frontend:
     image: frappe/erpnext:v16.6.1
@@ -122,8 +125,9 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    ports:
+    expose:
       - "8080:8080"
+    restart: unless-stopped
 
   queue-long:
     image: frappe/erpnext:v16.6.1
@@ -140,6 +144,7 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    
     environment:
       FRAPPE_REDIS_CACHE: redis://redis-cache:6379
       FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
@@ -172,6 +177,7 @@ services:
         condition: on-failure
     volumes:
       - redis-queue-data:/data
+    restart: unless-stopped
 
   redis-cache:
     image: redis:6.2-alpine
@@ -180,6 +186,7 @@ services:
     deploy:
       restart_policy:
         condition: on-failure
+    restart: unless-stopped
 
   scheduler:
     image: frappe/erpnext:v16.6.1
@@ -194,6 +201,7 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    restart: unless-stopped
 
   websocket:
     image: frappe/erpnext:v16.6.1
