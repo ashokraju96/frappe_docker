@@ -17,7 +17,8 @@ services:
       DB_PORT: "3306"
       MYSQL_ROOT_PASSWORD: admin
       MARIADB_ROOT_PASSWORD: admin
-    # start_period is long (5min) to allow create-site to finish on first deploy
+    # Health check is for monitoring only — does NOT block startup
+    # Backend will restart automatically (via restart: unless-stopped) until site is ready
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/method/ping || exit 1"]
       interval: 30s
@@ -139,7 +140,7 @@ services:
       - frappe_network
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
       websocket:
         condition: service_started
     deploy:
