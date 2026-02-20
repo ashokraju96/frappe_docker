@@ -17,10 +17,9 @@ services:
       DB_PORT: "3306"
       MYSQL_ROOT_PASSWORD: admin
       MARIADB_ROOT_PASSWORD: admin
-    # Health check is for monitoring only — does NOT block startup
-    # Backend will restart automatically (via restart: unless-stopped) until site is ready
+    # Uses python (always available in frappe image) instead of curl
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/method/ping || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/method/ping')\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -160,8 +159,9 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    # nginx image has wget available
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080 > /dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -307,6 +307,7 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    # Uses node (always available) instead of curl
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:9000/socket.io/?EIO=4&transport=polling', function(r){ process.exit(r.statusCode >= 200 && r.statusCode < 400 ? 0 : 1); }).on('error', function(){ process.exit(1); })\""]
       interval: 30s
