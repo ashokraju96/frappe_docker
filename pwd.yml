@@ -159,9 +159,9 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    # nginx image has wget available
+    # python3 is always available in the frappe/erpnext image
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080 > /dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080')\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
