@@ -17,12 +17,13 @@ services:
       DB_PORT: "3306"
       MYSQL_ROOT_PASSWORD: admin
       MARIADB_ROOT_PASSWORD: admin
+    # start_period is long (5min) to allow create-site to finish on first deploy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/api/method/ping || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 300s
     depends_on:
       db:
         condition: service_healthy
@@ -100,10 +101,10 @@ services:
         echo "sites/common_site_config.json found";
         bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default erp.reachforadvice.com;
     depends_on:
-      db:
-        condition: service_healthy
       configurator:
         condition: service_completed_successfully
+      db:
+        condition: service_healthy
 
   db:
     image: mariadb:10.6
@@ -140,7 +141,7 @@ services:
       backend:
         condition: service_healthy
       websocket:
-        condition: service_healthy
+        condition: service_started
     deploy:
       restart_policy:
         condition: on-failure
@@ -197,7 +198,7 @@ services:
       start_period: 15s
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
 
   queue-short:
     image: frappe/erpnext:v16.6.1
@@ -225,7 +226,7 @@ services:
       start_period: 15s
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
 
   redis-queue:
     image: redis:6.2-alpine
@@ -285,7 +286,7 @@ services:
     restart: unless-stopped
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
 
   websocket:
     image: frappe/erpnext:v16.6.1
@@ -313,7 +314,7 @@ services:
       start_period: 30s
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   db-data:
