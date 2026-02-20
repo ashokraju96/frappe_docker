@@ -12,12 +12,24 @@ services:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
     restart: unless-stopped
-    
     environment:
       DB_HOST: db
       DB_PORT: "3306"
       MYSQL_ROOT_PASSWORD: admin
       MARIADB_ROOT_PASSWORD: admin
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/method/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
 
   configurator:
     image: frappe/erpnext:v16.6.1
@@ -47,6 +59,13 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
 
   create-site:
     image: frappe/erpnext:v16.6.1
@@ -67,8 +86,8 @@ services:
         wait-for-it -t 120 redis-cache:6379;
         wait-for-it -t 120 redis-queue:6379;
         export start=`date +%s`;
-        until [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".db_host // empty"` ]] && \
-          [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_cache // empty"` ]] && \
+        until [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".db_host // empty"` ]] &&
+          [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_cache // empty"` ]] &&
           [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_queue // empty"` ]];
         do
           echo "Waiting for sites/common_site_config.json to be created";
@@ -80,17 +99,24 @@ services:
         done;
         echo "sites/common_site_config.json found";
         bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default erp.reachforadvice.com;
+    depends_on:
+      db:
+        condition: service_healthy
+      configurator:
+        condition: service_completed_successfully
 
   db:
     image: mariadb:10.6
     networks:
       frappe_network:
         aliases:
-          - backend
+          - db
     healthcheck:
-      test: mysqladmin ping -h localhost --password=admin
-      interval: 1s
-      retries: 20
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--password=admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     deploy:
       restart_policy:
         condition: on-failure
@@ -98,7 +124,7 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
+      - --skip-innodb-read-only-compressed
     environment:
       MYSQL_ROOT_PASSWORD: admin
       MARIADB_ROOT_PASSWORD: admin
@@ -111,7 +137,10 @@ services:
     networks:
       - frappe_network
     depends_on:
-      - websocket
+      backend:
+        condition: service_healthy
+      websocket:
+        condition: service_healthy
     deploy:
       restart_policy:
         condition: on-failure
@@ -129,11 +158,17 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     expose:
-    - "8080"
+      - "8080"
     labels:
-    - traefik.enable=true
-    - traefik.http.services.frontend.loadbalancer.server.port=8080
+      - traefik.enable=true
+      - traefik.http.services.frontend.loadbalancer.server.port=8080
     restart: unless-stopped
 
   queue-long:
@@ -151,10 +186,18 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
-    
     environment:
       FRAPPE_REDIS_CACHE: redis://redis-cache:6379
       FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep '[b]ench worker' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      backend:
+        condition: service_healthy
 
   queue-short:
     image: frappe/erpnext:v16.6.1
@@ -174,6 +217,15 @@ services:
     environment:
       FRAPPE_REDIS_CACHE: redis://redis-cache:6379
       FRAPPE_REDIS_QUEUE: redis://redis-queue:6379
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep '[b]ench worker' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      backend:
+        condition: service_healthy
 
   redis-queue:
     image: redis:6.2-alpine
@@ -186,6 +238,12 @@ services:
         condition: on-failure
     volumes:
       - redis-queue-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   redis-cache:
@@ -197,6 +255,12 @@ services:
     deploy:
       restart_policy:
         condition: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   scheduler:
@@ -212,7 +276,16 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep '[b]ench schedule' | grep -v grep || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
 
   websocket:
     image: frappe/erpnext:v16.6.1
@@ -232,6 +305,15 @@ services:
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:9000/socket.io/?EIO=4&transport=polling', function(r){ process.exit(r.statusCode >= 200 && r.statusCode < 400 ? 0 : 1); }).on('error', function(){ process.exit(1); })\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   db-data:
